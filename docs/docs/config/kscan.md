@@ -125,18 +125,17 @@ The `diode-direction` property must be one of:
 
 ## Round Robin Driver
 
-Keyboard scan driver where keys are arranged on a matrix with each GPIO used as both input and output. This driver enables n pins to drive up to n\*(n-1) keys.
+Keyboard scan driver where keys are arranged on a matrix with each GPIO used as both input and output.
+
+- With `interrupt-gpios` unset, this allows n pins to drive n\*(n-1) keys.
+- With `interrupt-gpios` set, n pins will drive (n-1)\*(n-2) keys, but provide much improved power handling.
 
 Definition file: [zmk/app/drivers/kscan/Kconfig](https://github.com/zmkfirmware/zmk/blob/main/app/drivers/kscan/Kconfig)
 
 | Config                                              | Type        | Description                                                               | Default |
 | --------------------------------------------------- | ----------- | ------------------------------------------------------------------------- | ------- |
-| `CONFIG_ZMK_KSCAN_ROUND_ROBIN_POLLING`              | bool        | Poll for key presses instead of using interrupts                          | n       |
 | `CONFIG_ZMK_KSCAN_ROUND_ROBIN_WAIT_BEFORE_INPUTS`   | int (ticks) | How long to wait before reading input pins after setting output active    | 0       |
 | `CONFIG_ZMK_KSCAN_ROUND_ROBIN_WAIT_BETWEEN_OUTPUTS` | int (ticks) | How long to wait between each output to allow previous output to "settle" | 0       |
-
-- With `CONFIG_ZMK_KSCAN_ROUND_ROBIN_POLLING` enabled this allows n pins to drive n\*(n-1) keys.
-- With `CONFIG_ZMK_KSCAN_ROUND_ROBIN_POLLING` disabled n pins will drive (n-1)\*(n-2) keys, but provide much improved power handling.
 
 ### Devicetree
 
@@ -144,15 +143,15 @@ Applies to: `compatible = "zmk,kscan-gpio-round-robin"`
 
 Definition file: [zmk/app/drivers/zephyr/dts/bindings/kscan/zmk,kscan-gpio-round-robin.yaml](https://github.com/zmkfirmware/zmk/blob/main/app/drivers/zephyr/dts/bindings/kscan/zmk%2Ckscan-gpio-round-robin.yaml)
 
-| Property                  | Type       | Description                                                                                                 | Default |
-| ------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------- | ------- |
-| `label`                   | string     | Unique label for the node                                                                                   |         |
-| `gpios`                   | GPIO array | GPIOs used, listed in order                                                                                 |         |
-| `interrupt-gpios`         | GPIO array | A single GPIO to use for interrupt                                                                          |         |
-| `debounce-press-ms`       | int        | Debounce time for key press in milliseconds. Use 0 for eager debouncing.                                    | 5       |
-| `debounce-release-ms`     | int        | Debounce time for key release in milliseconds.                                                              | 5       |
-| `debounce-scan-period-ms` | int        | Time between reads in milliseconds when any key is pressed.                                                 | 1       |
-| `poll-period-ms`          | int        | Time between reads in milliseconds when no key is pressed and `CONFIG_ZMK_KSCAN_MATRIX_POLLING` is enabled. | 10      |
+| Property                  | Type       | Description                                                                                 | Default |
+| ------------------------- | ---------- | ------------------------------------------------------------------------------------------- | ------- |
+| `label`                   | string     | Unique label for the node.                                                                  |         |
+| `gpios`                   | GPIO array | GPIOs used, listed in order.                                                                |         |
+| `interrupt-gpios`         | GPIO array | A single GPIO to use for interrupt. Leaving this empty will enable continuous polling.      |         |
+| `debounce-press-ms`       | int        | Debounce time for key press in milliseconds. Use 0 for eager debouncing.                    | 5       |
+| `debounce-release-ms`     | int        | Debounce time for key release in milliseconds.                                              | 5       |
+| `debounce-scan-period-ms` | int        | Time between reads in milliseconds when any key is pressed.                                 | 1       |
+| `poll-period-ms`          | int        | Time between reads in milliseconds when no key is pressed and `interrupt-gpois` is not set. | 10      |
 
 Define the transform with a [matrix transform](#matrix-transform). The row is always the driven pin, and the column always the receiving pin (input to the controller).
 For example, in `RC(5,0)` power flows from the 6th pin in `gpios` to the 1st pin in `gpios`.
