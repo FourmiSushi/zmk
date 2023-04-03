@@ -40,14 +40,35 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
     GPIO_DT_SPEC_GET_BY_IDX(DT_DRV_INST(inst_idx), gpios, idx),
 
 #define INST_INTR_DEFINED(n) DT_INST_NODE_HAS_PROP(n, interrupt_gpios)
+
+#define WITH_INTR(n) COND_CODE_1(INST_INTR_DEFINED(n), (+1), (+0))
+#define WITHOUT_INTR(n) COND_CODE_0(INST_INTR_DEFINED(n), (+1), (+0))
+
+#define USES_POLLING DT_INST_FOREACH_STATUS_OKAY(WITHOUT_INTR) > 0
+#define USES_INTERRUPT DT_INST_FOREACH_STATUS_OKAY(WITH_INTR) > 0
+
+#if USES_POLLING && USES_INTERRUPT
+#define USES_POLL_AND_INTR 1
+#else
+#define USES_POLL_AND_INTR 0
+#endif
+
 #define KSCAN_INTR_CFG_INIT(inst_idx) GPIO_DT_SPEC_GET(DT_DRV_INST(inst_idx), interrupt_gpios)
+
+#define RETURN_ERR_IF_ERR(before_return)                                                           \
+    if (err) {                                                                                     \
+        before_return;                                                                             \
+        return err;                                                                                \
+    }
 
 struct kscan_round_robin_data {
     const struct device *dev;
     kscan_callback_t callback;
     struct k_work_delayable work;
     int64_t scan_time; /* Timestamp of the current or scheduled scan. */
+#if USES_INTERRUPT
     struct gpio_callback irq_callback;
+#endif
     /**
      * Current state of the matrix as a flattened 2D array of length
      * (config->cells.length ^2)
@@ -68,9 +89,15 @@ struct kscan_round_robin_config {
     struct kscan_gpio_list cells;
     struct debounce_config debounce_config;
     int32_t debounce_scan_period_ms;
+#if USES_POLLING
     int32_t poll_period_ms;
+#endif
+#if USES_POLL_AND_INTR
     bool use_interrupt;
+#endif
+#if USES_INTERRUPT
     const struct gpio_dt_spec interrupt;
+#endif
 };
 
 /**
@@ -94,10 +121,8 @@ static int kscan_round_robin_set_as_input(const struct gpio_dt_spec *gpio) {
     }
 
     int err = gpio_pin_configure_dt(gpio, GPIO_INPUT);
-    if (err) {
-        LOG_ERR("Unable to configure pin %u on %s for input", gpio->pin, gpio->port->name);
-        return err;
-    }
+    RETURN_ERR_IF_ERR(
+        LOG_ERR("Unable to configure pin %u on %s for input", gpio->pin, gpio->port->name))
     return 0;
 }
 
@@ -108,16 +133,13 @@ static int kscan_round_robin_set_as_output(const struct gpio_dt_spec *gpio) {
     }
 
     int err = gpio_pin_configure_dt(gpio, GPIO_OUTPUT);
-    if (err) {
-        LOG_ERR("Unable to configure pin %u on %s for output", gpio->pin, gpio->port->name);
-        return err;
-    }
+    RETURN_ERR_IF_ERR(
+        LOG_ERR("Unable to configure pin %u on %s for output", gpio->pin, gpio->port->name);)
 
     err = gpio_pin_set_dt(gpio, 1);
-    if (err) {
-        LOG_ERR("Failed to set output pin %u active: %i", gpio->pin, err);
-    }
-    return err;
+    RETURN_ERR_IF_ERR(LOG_ERR("Failed to set output pin %u active: %i", gpio->pin, err);)
+
+    return 0;
 }
 
 static int kscan_round_robin_set_all_as_input(const struct device *dev) {
@@ -125,9 +147,7 @@ static int kscan_round_robin_set_all_as_input(const struct device *dev) {
     int err = 0;
     for (int i = 0; i < config->cells.len; i++) {
         err = kscan_round_robin_set_as_input(&config->cells.gpios[i]);
-        if (err) {
-            return err;
-        }
+        RETURN_ERR_IF_ERR()
     }
 
     return 0;
@@ -139,40 +159,32 @@ static int kscan_round_robin_set_all_outputs(const struct device *dev, const int
     for (int i = 0; i < config->cells.len; i++) {
         const struct gpio_dt_spec *gpio = &config->cells.gpios[i];
         int err = gpio_pin_configure_dt(gpio, GPIO_OUTPUT);
-        if (err) {
-            LOG_ERR("Unable to configure pin %u on %s for input", gpio->pin, gpio->port->name);
-            return err;
-        }
+        RETURN_ERR_IF_ERR(
+            LOG_ERR("Unable to configure pin %u on %s for input", gpio->pin, gpio->port->name);)
 
         err = gpio_pin_set_dt(gpio, value);
-        if (err) {
-            LOG_ERR("Failed to set output %i to %i: %i", i, value, err);
-            return err;
-        }
+        RETURN_ERR_IF_ERR(LOG_ERR("Failed to set output %i to %i: %i", i, value, err);)
     }
 
     return 0;
 }
 
+#if USES_INTERRUPT
 static int kscan_round_robin_interrupt_configure(const struct device *dev,
                                                  const gpio_flags_t flags) {
     const struct kscan_round_robin_config *config = dev->config;
     const struct gpio_dt_spec *gpio = &config->interrupt;
 
     int err = gpio_pin_interrupt_configure_dt(gpio, flags);
-    if (err) {
-        LOG_ERR("Unable to configure interrupt for pin %u on %s", gpio->pin, gpio->port->name);
-        return err;
-    }
+    RETURN_ERR_IF_ERR(
+        LOG_ERR("Unable to configure interrupt for pin %u on %s", gpio->pin, gpio->port->name);)
 
     return 0;
 }
 
 static int kscan_round_robin_interrupt_enable(const struct device *dev) {
     int err = kscan_round_robin_interrupt_configure(dev, GPIO_INT_LEVEL_ACTIVE);
-    if (err) {
-        return err;
-    }
+    RETURN_ERR_IF_ERR()
 
     // While interrupts are enabled, set all outputs active so an pressed key will trigger
     return kscan_round_robin_set_all_outputs(dev, 1);
@@ -188,6 +200,7 @@ static void kscan_round_robin_irq_callback(const struct device *port, struct gpi
     data->scan_time = k_uptime_get();
     k_work_reschedule(&data->work, K_NO_WAIT);
 }
+#endif
 
 static void kscan_round_robin_read_continue(const struct device *dev) {
     const struct kscan_round_robin_config *config = dev->config;
@@ -199,18 +212,30 @@ static void kscan_round_robin_read_continue(const struct device *dev) {
 }
 
 static void kscan_round_robin_read_end(const struct device *dev) {
+#if USES_POLLING
     struct kscan_round_robin_data *data = dev->data;
     const struct kscan_round_robin_config *config = dev->config;
+#endif
 
+#if USES_POLL_AND_INTR
     if (config->use_interrupt) {
+#endif
+#if USES_INTERRUPT
         // Return to waiting for an interrupt.
         kscan_round_robin_interrupt_enable(dev);
+#endif
+#if USES_POLL_AND_INTR
     } else {
+#endif
+#if USES_POLLING
         data->scan_time += config->poll_period_ms;
 
         // Return to polling slowly.
         k_work_reschedule(&data->work, K_TIMEOUT_ABS_MS(data->scan_time));
+#endif
+#if USES_POLL_AND_INTR
     }
+#endif
 }
 
 static int kscan_round_robin_read(const struct device *dev) {
@@ -221,17 +246,13 @@ static int kscan_round_robin_read(const struct device *dev) {
     // NOTE: RR vs MATRIX: set all pins as input, in case there was a failure on a
     // previous scan, and one of the pins is still set as output
     int err = kscan_round_robin_set_all_as_input(dev);
-    if (err) {
-        return err;
-    }
+    RETURN_ERR_IF_ERR()
 
     // Scan the matrix.
     for (int row = 0; row < config->cells.len; row++) {
         const struct gpio_dt_spec *out_gpio = &config->cells.gpios[row];
         err = kscan_round_robin_set_as_output(out_gpio);
-        if (err) {
-            return err;
-        }
+        RETURN_ERR_IF_ERR()
 
 #if CONFIG_ZMK_KSCAN_ROUND_ROBIN_WAIT_BEFORE_INPUTS > 0
         k_busy_wait(CONFIG_ZMK_KSCAN_ROUND_ROBIN_WAIT_BEFORE_INPUTS);
@@ -260,9 +281,8 @@ static int kscan_round_robin_read(const struct device *dev) {
         }
 
         err = kscan_round_robin_set_as_input(out_gpio);
-        if (err) {
-            return err;
-        }
+        RETURN_ERR_IF_ERR()
+
 #if CONFIG_ZMK_KSCAN_ROUND_ROBIN_WAIT_BETWEEN_OUTPUTS > 0
         k_busy_wait(CONFIG_ZMK_KSCAN_ROUND_ROBIN_WAIT_BETWEEN_OUTPUTS);
 #endif
@@ -308,11 +328,20 @@ static int kscan_round_robin_disable(const struct device *dev) {
     struct kscan_round_robin_data *data = dev->data;
     k_work_cancel_delayable(&data->work);
 
+#if USES_POLL_AND_INTR
     const struct kscan_round_robin_config *config = dev->config;
     if (config->use_interrupt) {
+#endif
+#if USES_INTERRUPT
         return kscan_round_robin_interrupt_configure(dev, GPIO_INT_DISABLE);
+#endif
+#if USES_POLL_AND_INTR
     }
+#endif
+
+#if USES_POLLING
     return 0;
+#endif
 }
 
 static int kscan_round_robin_init_inputs(const struct device *dev) {
@@ -320,31 +349,28 @@ static int kscan_round_robin_init_inputs(const struct device *dev) {
 
     for (int i = 0; i < config->cells.len; i++) {
         int err = kscan_round_robin_set_as_input(&config->cells.gpios[i]);
-        if (err) {
-            return err;
-        }
+        RETURN_ERR_IF_ERR()
     }
 
     return 0;
 }
 
+#if USES_INTERRUPT
 static int kscan_round_robin_init_interrupt(const struct device *dev) {
     struct kscan_round_robin_data *data = dev->data;
 
     const struct kscan_round_robin_config *config = dev->config;
     const struct gpio_dt_spec *gpio = &config->interrupt;
     int err = kscan_round_robin_set_as_input(gpio);
-    if (err) {
-        return err;
-    }
+    RETURN_ERR_IF_ERR()
 
     gpio_init_callback(&data->irq_callback, kscan_round_robin_irq_callback, BIT(gpio->pin));
     err = gpio_add_callback(gpio->port, &data->irq_callback);
-    if (err) {
-        LOG_ERR("Error adding the callback to the input device: %i", err);
-    }
-    return err;
+    RETURN_ERR_IF_ERR(LOG_ERR("Error adding the callback to the input device: %i", err))
+
+    return 0;
 }
+#endif
 
 static int kscan_round_robin_init(const struct device *dev) {
     struct kscan_round_robin_data *data = dev->data;
@@ -354,11 +380,19 @@ static int kscan_round_robin_init(const struct device *dev) {
     kscan_round_robin_init_inputs(dev);
     kscan_round_robin_set_all_outputs(dev, 0);
 
+#if USES_POLL_AND_INTR
     const struct kscan_round_robin_config *config = dev->config;
     if (config->use_interrupt) {
+#endif
+#if USES_INTERRUPT
         kscan_round_robin_init_interrupt(dev);
+#endif
+#if USES_POLL_AND_INTR
     }
+#endif
+
     k_work_init_delayable(&data->work, kscan_round_robin_work_handler);
+
     return 0;
 }
 
@@ -389,9 +423,9 @@ static const struct kscan_driver_api kscan_round_robin_api = {
                 .debounce_release_ms = INST_DEBOUNCE_RELEASE_MS(n),                                \
             },                                                                                     \
         .debounce_scan_period_ms = DT_INST_PROP(n, debounce_scan_period_ms),                       \
-        .poll_period_ms = DT_INST_PROP(n, poll_period_ms),                                         \
-        .use_interrupt = INST_INTR_DEFINED(n),                                                     \
-        COND_CODE_1(INST_INTR_DEFINED(n), (.interrupt = KSCAN_INTR_CFG_INIT(n)), ())};             \
+        COND_CODE_1(USES_POLLING, (.poll_period_ms = DT_INST_PROP(n, poll_period_ms), ), )         \
+            COND_CODE_1(USES_POLL_AND_INTR, (.use_interrupt = INST_INTR_DEFINED(n), ), )           \
+                COND_CODE_1(INST_INTR_DEFINED(n), (.interrupt = KSCAN_INTR_CFG_INIT(n)), )};       \
                                                                                                    \
     DEVICE_DT_INST_DEFINE(n, &kscan_round_robin_init, NULL, &kscan_round_robin_data_##n,           \
                           &kscan_round_robin_config_##n, APPLICATION,                              \
