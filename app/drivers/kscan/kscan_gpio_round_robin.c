@@ -6,14 +6,14 @@
 
 #include "debounce.h"
 
-#include <device.h>
-#include <devicetree.h>
-#include <drivers/gpio.h>
-#include <drivers/kscan.h>
-#include <kernel.h>
-#include <logging/log.h>
-#include <sys/__assert.h>
-#include <sys/util.h>
+#include <zephyr/device.h>
+#include <zephyr/devicetree.h>
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/kscan.h>
+#include <zephyr/kernel.h>
+#include <zephyr/logging/log.h>
+#include <zephyr/sys/__assert.h>
+#include <zephyr/sys/util.h>
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -52,6 +52,10 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #else
 #define USES_POLL_AND_INTR 0
 #endif
+
+#define COND_ANY_POLLING(code) COND_CODE_1(USES_POLLING, code, ())
+#define COND_POLL_AND_INTR(code) COND_CODE_1(USES_POLL_AND_INTR, code, ())
+#define COND_THIS_INTERRUPT(n, code) COND_CODE_1(INST_INTR_DEFINED(n), code, ())
 
 #define KSCAN_INTR_CFG_INIT(inst_idx) GPIO_DT_SPEC_GET(DT_DRV_INST(inst_idx), interrupt_gpios)
 
@@ -423,9 +427,9 @@ static const struct kscan_driver_api kscan_round_robin_api = {
                 .debounce_release_ms = INST_DEBOUNCE_RELEASE_MS(n),                                \
             },                                                                                     \
         .debounce_scan_period_ms = DT_INST_PROP(n, debounce_scan_period_ms),                       \
-        COND_CODE_1(USES_POLLING, (.poll_period_ms = DT_INST_PROP(n, poll_period_ms), ), )         \
-            COND_CODE_1(USES_POLL_AND_INTR, (.use_interrupt = INST_INTR_DEFINED(n), ), )           \
-                COND_CODE_1(INST_INTR_DEFINED(n), (.interrupt = KSCAN_INTR_CFG_INIT(n)), )};       \
+        COND_ANY_POLLING((.poll_period_ms = DT_INST_PROP(n, poll_period_ms), ))                    \
+            COND_POLL_AND_INTR((.use_interrupt = INST_INTR_DEFINED(n), ))                          \
+                COND_THIS_INTERRUPT(n, (.interrupt = KSCAN_INTR_CFG_INIT(n), ))};                  \
                                                                                                    \
     DEVICE_DT_INST_DEFINE(n, &kscan_round_robin_init, NULL, &kscan_round_robin_data_##n,           \
                           &kscan_round_robin_config_##n, APPLICATION,                              \
