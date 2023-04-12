@@ -1,0 +1,8 @@
+file_format: "1"
+id: xiao2key
+name: Xiao 2Key
+type: shield
+url: https://github.com/FourmiSushi
+requires: [seeed_xiao]
+features:
+  - keys
