@@ -1,0 +1,8 @@
+file_format: "1"
+id: xiao1matrix
+name: Xiao 1Matrix
+type: shield
+url: https://github.com/FourmiSushi
+requires: [seeeduino_xiao_ble]
+features:
+  - keys
