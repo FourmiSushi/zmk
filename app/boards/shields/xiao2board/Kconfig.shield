@@ -1,0 +1,5 @@
+config SHIELD_XIAO2BOARD_LEFT
+	def_bool $(shields_list_contains,xiao2board_left)
+
+config SHIELD_XIAO2BOARD_RIGHT
+	def_bool $(shields_list_contains,xiao2board_right)

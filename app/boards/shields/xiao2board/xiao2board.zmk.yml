@@ -1,0 +1,11 @@
+file_format: "1"
+id: xiao2board
+name: Xiao 2Board
+type: shield
+url: https://github.com/FourmiSushi
+requires: [seeeduino_xiao_ble]
+features:
+  - keys
+siblings:
+  - xiao2board_left
+  - xiao2board_right

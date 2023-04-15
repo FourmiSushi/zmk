@@ -1,0 +1,5 @@
+#include "xiao2board.dtsi"
+
+&kscan0 {
+    col-gpios = <&xiao_d 0 GPIO_ACTIVE_HIGH>;
+};

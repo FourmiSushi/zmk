@@ -1,0 +1,9 @@
+#include "xiao2board.dtsi"
+
+&default_transform {
+	col-offset = <1>;
+};
+
+&kscan0 {
+    col-gpios = <&xiao_d 0 GPIO_ACTIVE_HIGH>;
+};

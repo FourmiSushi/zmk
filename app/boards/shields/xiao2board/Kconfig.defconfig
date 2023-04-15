@@ -1,0 +1,16 @@
+if SHIELD_XIAO2BOARD_LEFT
+
+config ZMK_KEYBOARD_NAME
+    default "Xiao 2Board"
+
+config ZMK_SPLIT_ROLE_CENTRAL
+    default y
+
+endif
+
+if SHIELD_XIAO2BOARD_LEFT || SHIELD_XIAO2BOARD_RIGHT
+
+config ZMK_SPLIT
+    default y
+
+endif
