@@ -1,0 +1,8 @@
+file_format: "1"
+id: 2x2rr
+name: 2X2RR
+type: shield
+url: https://github.com/FourmiSushi
+requires: [seeeduino_xiao_ble]
+features:
+  - keys

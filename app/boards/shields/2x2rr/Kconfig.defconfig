@@ -1,0 +1,9 @@
+# Copyright (c) 2022 The ZMK Contributors
+# SPDX-License-Identifier: MIT
+
+if SHIELD_2X2RR
+
+config ZMK_KEYBOARD_NAME
+    default "2X2RR"
+
+endif
